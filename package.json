@@ -1,0 +1,26 @@
+{
+  "name": "orm",
+  "version": "1.0.0",
+  "description": "An ORM for Postgres",
+  "main": "orm.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/toddself/orm.git"
+  },
+  "keywords": [],
+  "author": "Todd Kennedy <todd@selfassembled.org>",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/toddself/orm/issues"
+  },
+  "homepage": "https://github.com/toddself/orm#readme",
+  "dependencies": {
+    "joi": "^14.0.6",
+    "pg": "^7.6.1",
+    "pg-format": "^1.0.4",
+    "uuid": "^3.3.2"
+  }
+}
