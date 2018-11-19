@@ -7,9 +7,21 @@ const INSERTSQL = `INSERT INTO %I (id, data, meta) VALUES ($1, $2, $3)`
 const UPDATESQL = `UPDATE %I SET meta = meta || %L, data = data || %L`
 const RELATIONSQL = `INSERT INTO %I SET (relation, target_type, target_id, owner_id) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`
 
+const TABLE = `CREATE TABLE %I (id uuid, data jsonb, meta jsonb)`
+const RELTABLE = `CREATE TABLE $I (id bigserial PRIMARY KEY, relation varchar(64), target_model varchar(64), target_id uuid, owner_id uuid)`
+
 class ORM {
   static setConnection (connection) {
     this._pool = new pg.Pool(connection)
+  }
+
+  static async initialize (models) {
+    for (const model of models) {
+      const tableSQL = format(TABLE, model._table)
+      const relSQL = format(RELTABLE, `${model._table}_relation`)
+      await ORM._pool.query(tableSQL)
+      await ORM._pool.query(relSQL)
+    }
   }
 
   constructor () {
