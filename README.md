@@ -1,5 +1,5 @@
-# ORM
-An experimental ORM using JSONB columns types in Postgres
+# parthenon
+An experimental ORM using JSONB column types in Postgres
 
 ## Usage
 
@@ -17,6 +17,7 @@ const UserModel = orm.makeModel({
 await orm.initialize([UserModel])
 const user = new UserModel({name: 'todd'})
 await user.save()
+await orm.end()
 ```
 
 ## License

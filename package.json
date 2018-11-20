@@ -1,7 +1,7 @@
 {
-  "name": "orm",
+  "name": "parthenon",
   "version": "1.0.0",
-  "description": "An ORM for Postgres",
+  "description": "An minimal column ORM for Postgres",
   "main": "orm.js",
   "scripts": {
     "test": "standard --fix && tap --cov test/*.spec.js"
