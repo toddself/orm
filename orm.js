@@ -3,44 +3,57 @@ const pg = require('pg')
 const format = require('pg-format')
 const uuid = require('uuid/v4')
 
-const INSERTSQL = `INSERT INTO %I (id, data, meta) VALUES ($1, $2, $3)`
+const INSERTSQL = `INSERT INTO %I (%s, data, meta) VALUES ($1, $2, $3)`
 const UPDATESQL = `UPDATE %I SET meta = meta || %L, data = data || %L`
 const RELATIONSQL = `INSERT INTO %I SET (relation, target_type, target_id, owner_id) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`
 
-const TABLE = `CREATE TABLE %I (id uuid, data jsonb, meta jsonb)`
-const RELTABLE = `CREATE TABLE $I (id bigserial PRIMARY KEY, relation varchar(64), target_model varchar(64), target_id uuid, owner_id uuid)`
+const TABLE = `CREATE TABLE IF NOT EXISTS %I (%s uuid, data jsonb, meta jsonb)`
+const RELTABLE = `CREATE TABLE IF NOT EXISTS %I (id bigserial PRIMARY KEY, relation varchar(64), target_type varchar(64), target_id uuid, owner_id uuid)`
+
+const ModelSym = Symbol('models')
+const PoolSym = Symbol('pool')
 
 class ORM {
-  static setConnection (connection) {
-    this._pool = new pg.Pool(connection)
-  }
-
-  static async initialize (models) {
-    for (const model of models) {
-      const tableSQL = format(TABLE, model._table)
-      const relSQL = format(RELTABLE, `${model._table}_relation`)
-      await ORM._pool.query(tableSQL)
-      await ORM._pool.query(relSQL)
+  constructor (connection) {
+    if (connection) {
+      this[PoolSym] = new pg.Pool(connection)
+      this[ModelSym] = new Map()
     }
   }
 
-  constructor () {
-    if (!ORM._pool) throw new Error('You must call ORM.setConnection first')
+  async initialize (models) {
+    for (const model of models) {
+      const tableSQL = format(TABLE, model._table, model._idColumn)
+      const relSQL = format(RELTABLE, `${model._table}_relations`)
+      await this[PoolSym].query(tableSQL)
+      await this[PoolSym].query(relSQL)
+    }
+  }
+
+  async end () {
+    return this[PoolSym].end()
+  }
+
+  async query (query, args) {
+    return this[PoolSym].query(query, args)
   }
 
   makeModel (config) {
     if (!config) throw new Error('You need to supply a configuration')
+    const that = this
     class model extends ORM {
       constructor (data) {
-        super()
+        super(false)
         this.name = config.name
         this._table = config.name || config.tableName
+        this._idColumn = config.idColumn || 'id'
         this._data = {}
         this._dirty = []
         this._new = true
         this._id = null
         this._fields = config.fields
-        this._pool = ORM._pool
+        this[PoolSym] = that[PoolSym]
+        this[ModelSym] = that[ModelSym]
         Object.keys(this._fields).forEach((key) => {
           this._define(key)
         })
@@ -61,6 +74,9 @@ class ORM {
         })
       }
     }
+    this[ModelSym].set(config.name, model)
+    model._table = config.name || config.tableName
+    model._idColumn = config.idColumn || 'id'
     return model
   }
 
@@ -84,14 +100,17 @@ class ORM {
         const data = this._data[key]
         if (field.schemaType === 'array') {
           if (!data.find((obj) => obj.id === val.id)) {
-            joi.assert([val], field)
+            if (field.isJoi) joi.assert([val], field)
+            else field.validator([val])
             data.push(val)
           }
         } else {
           if (field.schemaType === 'relation') {
-            joi.assert(val, field.validator)
+            if (field.validator.isJoi) joi.assert(val, field.validator)
+            else field.validator(val)
           } else {
-            joi.assert(val, field)
+            if (field.isJoi) joi.assert(val, field)
+            else field.validator(val)
           }
           this._data[key] = val
         }
@@ -102,14 +121,15 @@ class ORM {
     })
   }
 
-  async load () {
+  async load (expand) {
     if (!this.id) throw new Error('You must provide an id to load from the database')
-    const dataSQL = format(`SELECT data FROM %I WHERE id = $1`, this._table)
+    const dataSQL = format(`SELECT data FROM %I WHERE %s = $1`, this._table, this._idColumn)
     const relationSQL = format(`SELECT relation, target_type, target_id FROM %I WHERE owner_id = $1`, `${this._table}_relations`)
     const [data, relations] = await Promise.all([
-      this._pool.query(dataSQL, [this.id]),
-      this._pool.query(relationSQL, [this.id])
+      this[PoolSym].query(dataSQL, [this.id]),
+      this[PoolSym].query(relationSQL, [this.id])
     ])
+
     if (data && data.rows[0]) {
       const dbData = data.rows[0].data
       Object.keys(dbData).forEach((key) => {
@@ -122,15 +142,22 @@ class ORM {
     }
 
     if (relations && relations.rows.length > 0) {
-      relations.rows.forEach((row) => {
+      await Promise.all(relations.rows.map((row) => {
         try {
-          this[row.relation] = {id: row.target_id, type: row.target_type}
+          const Model = this[ModelSym].get(row.relation)
+          if (!Model) {
+            throw new Error(`${row.relation} is not a registered model!`)
+          }
+          const m = new Model({ id: row.target_id, type: row.target_type })
+          this[row.relation] = m
+          if (expand) {
+            return m.load()
+          }
         } catch (err) {
           throw new Error(`${row.relation} is not a defined property for ${this._table}`)
         }
-      })
+      }))
     }
-
     this._new = false
   }
 
@@ -146,16 +173,16 @@ class ORM {
       isDeleted: false
     }
 
-    const {data, complex, relations} = this._parseUpdates()
+    const { data, complex, relations } = this._parseUpdates()
     const sql = []
     const args = []
     if (this._new) {
-      sql.push(format(INSERTSQL, this._table))
+      sql.push(format(INSERTSQL, this._table, this._idColumn))
       args.push(this.id)
       args.push(data)
       args.push(meta)
     } else {
-      sql.push(format(UPDATESQL, this._table, {updated: meta.updated}, data))
+      sql.push(format(UPDATESQL, this._table, { updated: meta.updated }, data))
       const bounds = ['WHERE id = $1']
       args.push(this.id)
       const complexKeys = Object.keys(complex)
@@ -189,7 +216,7 @@ class ORM {
       }
     }
 
-    const client = await this._pool.connect()
+    const client = await this[PoolSym].connect()
     try {
       await client.query('BEGIN')
       await client.query(sql.join(' '), args)
@@ -222,7 +249,7 @@ class ORM {
         data[key] = this._data[key]
       }
     }
-    return {data, complex, relations}
+    return { data, complex, relations }
   }
 
   toJSON () {

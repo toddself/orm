@@ -4,7 +4,7 @@
   "description": "An ORM for Postgres",
   "main": "orm.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "standard --fix && tap --cov test/*.spec.js"
   },
   "repository": {
     "type": "git",
@@ -22,5 +22,9 @@
     "pg": "^7.6.1",
     "pg-format": "^1.0.4",
     "uuid": "^3.3.2"
+  },
+  "devDependencies": {
+    "standard": "^12.0.1",
+    "tap": "^12.1.0"
   }
 }
