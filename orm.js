@@ -9,7 +9,6 @@ const RELTABLE = `CREATE TABLE IF NOT EXISTS %I (id bigserial PRIMARY KEY, relat
 
 class ORM {
   constructor (connection) {
-    this._transaction = false
     this._client = null
     this._modelCache = new Map()
     if (connection) {
@@ -41,29 +40,24 @@ class ORM {
     return client.query(query, args)
   }
 
-  transaction (queries) {
-    return new Promise(async (resolve, reject) => {
-      debug(`Starting transaction`)
-      try {
-        this._transaction = true
-        this._client = await this._pool.connect()
-        await this.query('BEGIN')
-        for (const query of queries) {
-          await this.query(query.query, query.args)
-        }
-        await this.query('COMMIT')
-        debug('Committing transaction')
-        resolve()
-      } catch (err) {
-        await this.query('ROLLBACK')
-        debug('Rolled back transaction', err)
-        reject(err)
-      } finally {
-        this._transaction = false
-        this._client.release()
-        this._client = null
+  async transaction (queries) {
+    queries.unshift({ query: 'BEGIN' })
+    queries.push({ query: 'COMMIT' })
+    this._client = await this._pool.connect()
+    try {
+      this._transaction = true
+      for (const query of queries) {
+        await this.query(query.query, query.args)
       }
-    })
+    } catch (err) {
+      debug('Rolled back transaction', err)
+      await this.query('ROLLBACK')
+      throw err
+    } finally {
+      debug('Cleaning up')
+      this._client.release()
+      this._client = null
+    }
   }
 
   makeModel (config) {

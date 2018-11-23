@@ -27,10 +27,12 @@ async function teardown () {
 test('orm', async (t) => {
   await setup()
 
-  await t.test('connects', async () => {
+  await t.test('connects', async (t) => {
     const orm = new ORM({ database: testDatabase })
-    orm.end()
-  })
+    t.ok(orm._pool, 'everybody in the pool')
+    await orm.end()
+    t.end()
+  }).catch(t.threw)
 
   await t.test('creates a model', async (t) => {
     const orm = new ORM({ database: testDatabase })
@@ -88,11 +90,30 @@ test('orm', async (t) => {
     }
     const Bar = orm.makeModel(barConfig)
     const Beep = orm.makeModel(beepConfig)
+
     await orm.initialize([Beep, Bar])
+
     const beep = new Beep({ name: 'beep-test' })
     await beep.save()
+
     const bar = new Bar({ name: 'test', beeps: beep })
     await bar.save()
+
+    const bar2 = new Bar({ id: bar.id })
+    await bar2.load({ expand: true })
+    const expect = {
+      beeps: [{
+        name: 'beep-test'
+      }],
+      name: 'test'
+    }
+
+    const data = bar2.toJSON()
+    expect.id = data.id
+    data.beeps.forEach((d, i) => (expect.beeps[i].id = d.id))
+    t.deepEqual(data, expect, 'loaded')
+
+    await orm.end()
     t.end()
   }).catch(t.threw)
 
