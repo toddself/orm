@@ -69,7 +69,7 @@ test('orm', async (t) => {
     t.end()
   }).catch(t.threw)
 
-  await t.skip('handles complex data types', async (t) => {
+  await t.test('handles complex data types', async (t) => {
     const orm = new ORM({ database: testDatabase })
     const barConfig = {
       name: 'bar',

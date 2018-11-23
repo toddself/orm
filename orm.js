@@ -9,20 +9,25 @@ const RELTABLE = `CREATE TABLE IF NOT EXISTS %I (id bigserial PRIMARY KEY, relat
 
 class ORM {
   constructor (connection) {
+    this._transaction = false
+    this._client = null
+    this._modelCache = new Map()
     if (connection) {
       this._pool = new pg.Pool(connection)
-      this._modelCache = new Map()
-      this._transaction = false
-      this._client = null
     }
+  }
+
+  setConnection (connection) {
+    this._pool = new pg.Pool(connection)
   }
 
   async initialize (models) {
     for (const model of models) {
+      debug(`Creating table for ${model._table} with id column ${model._idColumn}`)
       const tableSQL = format(TABLE, model._table, model._idColumn)
       const relSQL = format(RELTABLE, `${model._table}_relations`)
-      await this._pool.query(tableSQL)
-      await this._pool.query(relSQL)
+      await this.query(tableSQL)
+      await this.query(relSQL)
     }
   }
 
@@ -32,33 +37,31 @@ class ORM {
 
   async query (query, args) {
     debug(`Query: ${query}, args: %o`, args)
-    return this._pool.query(query, args)
-  }
-
-  async startTransaction () {
-    debug(`Starting transaction`)
-    this._transaction = true
+    const client = this._client || this._pool
+    return client.query(query, args)
   }
 
   transaction (queries) {
     return new Promise(async (resolve, reject) => {
-      const client = await this._pool.connect()
+      debug(`Starting transaction`)
       try {
-        debug('Start transaction')
-        await client.query('BEGIN')
+        this._transaction = true
+        this._client = await this._pool.connect()
+        await this.query('BEGIN')
         for (const query of queries) {
-          debug(`Query ${query.query}, args: %o`, query.args)
-          await client.query(query.query, query.args)
+          await this.query(query.query, query.args)
         }
-        await client.query('COMMIT')
-        debug('Commit transaction')
-        client.release()
+        await this.query('COMMIT')
+        debug('Committing transaction')
         resolve()
       } catch (err) {
-        debug('Transaction failed!', err)
-        await client.query('ROLLBACK')
-        client.release()
+        await this.query('ROLLBACK')
+        debug('Rolled back transaction', err)
         reject(err)
+      } finally {
+        this._transaction = false
+        this._client.release()
+        this._client = null
       }
     })
   }
@@ -66,18 +69,20 @@ class ORM {
   makeModel (config) {
     if (!config) throw new Error('You need to supply a configuration')
 
-    const handler = {
+    const proxyHandler = {
       construct: (Target, args) => {
         args.push(config, this)
         return new Target(...args)
+      },
+      get (target, prop) {
+        if (prop === '_table') return config.name || config.tableName
+        if (prop === '_idColumn') return config.idColumn || 'id'
+        return target[prop]
       }
     }
 
-    const model = new Proxy(BaseModel, handler)
+    const model = new Proxy(BaseModel, proxyHandler)
     this._modelCache.set(config.name, model)
-
-    model._table = config.name || config.tableName
-    model._idColumn = config.idColumn || 'id'
     return model
   }
 }
