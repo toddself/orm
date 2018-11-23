@@ -36,9 +36,9 @@ test('orm', async (t) => {
     const orm = new ORM({ database: testDatabase })
     const config = {
       name: 'foo',
-      idField: 'id',
+      idColumn: 'key',
       fields: {
-        id: joi.string().guid({ version: 'uuidv4' }),
+        key: joi.string().guid({ version: 'uuidv4' }),
         name: joi.string(),
         email: joi.string().email()
       }
@@ -46,17 +46,56 @@ test('orm', async (t) => {
     const Test = orm.makeModel(config)
     await orm.initialize([Test])
     const test1 = new Test({ name: 'todd', email: 'todd@selfassembled.org' })
-    await test1.save()
-    const test2 = new Test({ id: test1.id })
-    await test2.load()
+
+    try {
+      await test1.save()
+    } catch (err) {
+      t.fail(err)
+    }
+
+    const test2 = new Test({ key: test1.key })
+
+    try {
+      await test2.load()
+    } catch (err) {
+      t.fail(err)
+    }
+
     const t1Data = test1.toJSON()
     const t2Data = test2.toJSON()
-    t1Data.id = t2Data.id
+    t1Data.key = t2Data.key
     t.deepEquals(t1Data, t2Data, 'new save and load')
     await orm.end()
     t.end()
-  })
+  }).catch(t.threw)
+
+  await t.skip('handles complex data types', async (t) => {
+    const orm = new ORM({ database: testDatabase })
+    const barConfig = {
+      name: 'bar',
+      fields: {
+        id: joi.string().guid({ version: 'uuidv4' }),
+        name: joi.string(),
+        beeps: { schemaType: 'relation', multi: true, validator: joi.object().unknown(true) }
+      }
+    }
+    const beepConfig = {
+      name: 'beep',
+      fields: {
+        id: joi.string().guid({ version: 'uuidv4' }),
+        name: joi.string()
+      }
+    }
+    const Bar = orm.makeModel(barConfig)
+    const Beep = orm.makeModel(beepConfig)
+    await orm.initialize([Beep, Bar])
+    const beep = new Beep({ name: 'beep-test' })
+    await beep.save()
+    const bar = new Bar({ name: 'test', beeps: beep })
+    await bar.save()
+    t.end()
+  }).catch(t.threw)
 
   await teardown()
   t.end()
-})
+}).catch(test.threw)
