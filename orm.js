@@ -2,6 +2,7 @@ const pg = require('pg')
 const format = require('pg-format')
 const debug = require('debug')('parthenon')
 
+const joi = require('./lib/joi')
 const BaseModel = require('./lib/base-model')
 
 const TABLE = `CREATE TABLE IF NOT EXISTS %I (%s uuid, data jsonb, meta jsonb)`
@@ -11,6 +12,7 @@ class ORM {
   constructor (connection) {
     this._client = null
     this._modelCache = new Map()
+    this.joi = joi
     if (connection) {
       this._pool = new pg.Pool(connection)
     }
@@ -80,5 +82,6 @@ class ORM {
     return model
   }
 }
+ORM.joi = joi
 
 module.exports = ORM
