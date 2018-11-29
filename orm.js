@@ -6,13 +6,13 @@ const joi = require('./lib/joi')
 const BaseModel = require('./lib/base-model')
 
 const TABLE = `CREATE TABLE IF NOT EXISTS %I (%s uuid, data jsonb, meta jsonb)`
-const RELTABLE = `CREATE TABLE IF NOT EXISTS %I (id bigserial PRIMARY KEY, relation varchar(64), target_type varchar(64), target_id uuid, owner_id uuid)`
+const RELTABLE = `CREATE TABLE IF NOT EXISTS %I (id bigserial PRIMARY KEY, owner_relation varchar(64), target_relation varchar(64), target_id uuid, owner_id uuid)`
 
 class ORM {
   constructor (connection) {
     this._client = null
     this._modelCache = new Map()
-    this.joi = joi
+    this.fields = joi(this)
     if (connection) {
       this._pool = new pg.Pool(connection)
     }
@@ -26,9 +26,11 @@ class ORM {
     for (const model of models) {
       debug(`Creating table for ${model._table} with id column ${model._idColumn}`)
       const tableSQL = format(TABLE, model._table, model._idColumn)
-      const relSQL = format(RELTABLE, `${model._table}_relations`)
       await this.query(tableSQL)
-      await this.query(relSQL)
+      for (const relation of model._relations) {
+        const relationSQL = format(RELTABLE, [model._table, relation._modelName].sort().join('_'))
+        await this.query(relationSQL)
+      }
     }
   }
 
@@ -62,6 +64,10 @@ class ORM {
     }
   }
 
+  getModel (modelName) {
+    return this._modelCache.get(modelName)
+  }
+
   makeModel (config) {
     if (!config) throw new Error('You need to supply a configuration')
 
@@ -73,6 +79,9 @@ class ORM {
       get (target, prop) {
         if (prop === '_table') return config.name || config.tableName
         if (prop === '_idColumn') return config.idColumn || 'id'
+        if (prop === '_relations') {
+          return Object.values(config.fields).filter((field) => field._isRelation)
+        }
         return target[prop]
       }
     }
@@ -82,6 +91,5 @@ class ORM {
     return model
   }
 }
-ORM.joi = joi
 
 module.exports = ORM
