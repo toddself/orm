@@ -56,6 +56,38 @@ test('array observer', (t) => {
     t.end()
   })
 
+  t.test('splice', (t) => {
+    var changeList = []
+    var arr = makeArray(['a', 'b', 'c'], 'test3', validator, changeList, joi)
+    arr.splice(1, 0, 'd')
+    t.deepEqual(arr, ['a', 'd', 'b', 'c'], 'spliced')
+    t.deepEqual(changeList[0], { change: 'add', prop: 'test3', val: 'd' }, 'changes')
+
+    const val = arr.splice(1, 1)
+    t.deepEqual(arr, ['a', 'b', 'c'], 'spliced')
+    t.deepEqual(val, ['d'], 'got back val')
+    t.deepEqual(changeList[1], { change: 'remove', prop: 'test3', val: 'd' }, 'changes')
+
+    const val2 = arr.splice(1, 1, 'f')
+    t.deepEqual(arr, ['a', 'f', 'c'], 'spliced')
+    t.deepEqual(val2, ['b'], 'got back val')
+    t.deepEqual(changeList[2], { change: 'add', prop: 'test3', val: 'f' }, 'changes')
+    t.deepEqual(changeList[3], { change: 'remove', prop: 'test3', val: 'b' }, 'changes')
+
+    const val3 = arr.splice(1)
+    t.deepEqual(arr, ['a'], 'spliced')
+    t.deepEqual(val3, ['f', 'c'], 'got back val')
+    t.deepEqual(changeList[4], { change: 'remove', prop: 'test3', val: 'f' }, 'changes')
+    t.deepEqual(changeList[5], { change: 'remove', prop: 'test3', val: 'c' }, 'changes')
+
+    const val4 = arr.splice(0, 100)
+    t.deepEqual(arr, [], 'spliced')
+    t.deepEqual(val4, ['a'], 'got back val')
+    t.deepEqual(changeList[6], { change: 'remove', prop: 'test3', val: 'a' }, 'changes')
+
+    t.end()
+  })
+
   t.test('fill', (t) => {
     const changeList = []
     const arr = makeArray(['a', 'b', 'c'], 'test2', validator, changeList, joi)
@@ -89,6 +121,8 @@ test('array observer', (t) => {
     arr.length = 0
     t.deepEqual(arr, [], 'no values')
     t.deepEqual(changes[5], { change: 'remove', prop: 'test', val: 'yo' }, 'removed')
+    arr.foo = 'bar'
+    t.equal(arr.foo, 'bar', 'normal stuff works')
     t.end()
   })
 
