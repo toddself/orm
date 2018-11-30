@@ -6,7 +6,7 @@ const joi = require('./lib/joi')
 const BaseModel = require('./lib/base-model')
 
 const TABLE = `CREATE TABLE IF NOT EXISTS %I (%s uuid, data jsonb, meta jsonb)`
-const RELTABLE = `CREATE TABLE IF NOT EXISTS %I (id bigserial PRIMARY KEY, relation varchar(64), target_id uuid, owner_id uuid)`
+const RELTABLE = `CREATE TABLE IF NOT EXISTS %I (id bigserial PRIMARY KEY, relation varchar(64), %s_id uuid, %s_id uuid)`
 
 class ORM {
   constructor (connection) {
@@ -29,7 +29,7 @@ class ORM {
       await this.query(tableSQL)
       for (const relation of model._relations) {
         const rel = typeof relation === 'string' ? this.getModel(relation) : relation
-        const relationSQL = format(RELTABLE, this.getRelTable(model, rel))
+        const relationSQL = format(RELTABLE, this.getRelTable(model, rel), model._table, rel._table)
         await this.query(relationSQL)
       }
     }
