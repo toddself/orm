@@ -6,7 +6,7 @@ const makeArray = require('../lib/array-observer')
 test('array observer', (t) => {
   const changes = []
   const validator = joi.string()
-  const arr = makeArray([], 'test', validator, changes)
+  const arr = makeArray([], 'test', validator, changes, joi)
 
   t.test('push', (t) => {
     try {
@@ -58,7 +58,7 @@ test('array observer', (t) => {
 
   t.test('fill', (t) => {
     const changeList = []
-    const arr = makeArray(['a', 'b', 'c'], 'test2', validator, changeList)
+    const arr = makeArray(['a', 'b', 'c'], 'test2', validator, changeList, joi)
     try {
       arr.fill({})
     } catch (err) {
