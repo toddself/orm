@@ -4,18 +4,26 @@ An experimental ORM using JSONB column types in Postgres
 ## Usage
 
 ```js
-const joi = require('joi')
 const ORM = require('./orm')
 const orm = new ORM({database: 'test'})
 const UserModel = orm.makeModel({
   name: 'user',
   table: 'users',
   fields: {
-    name: joi.string()
+    name: orm.fields.string(),
+    group: orm.fields.related('group', 'members')
+  }
+})
+const GroupModel = orm.makeModel({
+  name: 'group',
+  fields: {
+    name: orm.fields.string(),
+    user: orm.fields.related(UserModel, 'members')
   }
 })
 await orm.initialize([UserModel])
-const user = new UserModel({name: 'todd'})
+const group = new GroupModel({name: 'people'})
+const user = new UserModel({name: 'todd', group})
 await user.save()
 await orm.end()
 ```
